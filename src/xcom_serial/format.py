@@ -22,7 +22,7 @@ def format_object(object_type, object_id, prop_id, prop_data):
         "Object type: 0x{:04x} - {}".format(object_type, OBJECT_TYPE[object_type]),
         "Object id: 0x{:04x} - {}".format(object_id, object_id),
         "Property id: 0x{:04x}".format(prop_id),
-        "Property Data: 0x{}".format(prop_data)
+        "Property Data: {}".format(prop_data)
     ])
     return object_string
 

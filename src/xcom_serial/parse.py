@@ -1,10 +1,19 @@
-def is_data_constistent(data_bytes, checksum):
+import struct
+
+
+def calculate_checksum(data_bytes):
     a = 0xFF
     b = 0
     for byte in data_bytes:
         a = (a + byte) % 0x100
         b = (a + b) % 0x100
-    return checksum == bytes([a,b])
+
+    return bytes([a,b])
+
+
+def is_data_constistent(data_bytes, checksum):
+
+    return checksum == calculate_checksum(data_bytes)
 
 
 def convert_bytes_to_int(bytes):
@@ -12,6 +21,14 @@ def convert_bytes_to_int(bytes):
     for i in range(len(bytes)):
         x += bytes[i] << 8*i
     return x
+
+
+def convert_bytes_to_float(bytes):
+    return struct.unpack("<f", bytes.fromhex(bytes))[0]
+
+
+def convert_float_to_bytes(f):
+    return struct.pack("<f", f)
 
 
 def parse_service_frame(data):

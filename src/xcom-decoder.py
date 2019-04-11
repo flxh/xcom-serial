@@ -1,5 +1,6 @@
 from xcom_serial.parse import parse_next_message, parse_service_frame, parse_object
 from xcom_serial.format import SERVICE_FLAGS, SERVICE, OBJECT_TYPE, format_message, format_service_frame, format_object
+import struct
 
 log_bytes = open("xcom_log.txt", "rb").read()
 
@@ -25,6 +26,9 @@ while len(log_bytes) > 0:
         object_type, object_id, property_id, property_data = parse_object(service_data)
 
         write_csv_line(src_address, dest_address, service_flags, service_id, object_type, object_id, property_id, property_data)
+
+        f = object_id.to_bytes(2, "big")
+        print(f)
 
         object_string = format_object(object_type, object_id, property_id, property_data)
         service_frame_string = format_service_frame(service_flags,service_id, object_string)
