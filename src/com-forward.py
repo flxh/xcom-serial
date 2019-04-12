@@ -6,8 +6,8 @@ from threading import Thread
 
 BAUDRATE = 38400
 PARITY = serial.PARITY_EVEN
-PORT_XCOM = "COM20" #TODO
-PORT_MANAGEMENT = "COM19"#TODO
+PORT_XCOM = "COM3" #TODO
+PORT_MANAGEMENT = "COM2"#TODO
 
 overwrite_factor = 1.
 
@@ -17,10 +17,16 @@ def overwrite_func(service_flag_byte, service_id, object_type, object_id, proper
         global overwrite_factor
         val = convert_bytes_to_float(property_data)
         val *= overwrite_factor
+        print("Overwritten. Factor = {} Value = {}".format(overwrite_factor, val))
         property_data = convert_float_to_bytes(val)
 
-        ob_id_bytes = (object_id).to_bytes(2, "big")
-        data_bytes = service_flag_byte + service_id + object_type + ob_id_bytes + property_id + property_data
+        data_bytes = service_flag_byte.to_bytes(1, "little")
+        data_bytes += service_id.to_bytes(1, "little")
+        data_bytes += object_type.to_bytes(2, "little")
+        data_bytes += object_id.to_bytes(4, "little")
+        data_bytes += property_id.to_bytes(2, "little")
+        data_bytes += property_data
+        
         checksum_bytes = calculate_checksum(data_bytes)
         return data_bytes, checksum_bytes
 
@@ -33,7 +39,6 @@ def forward(p_from, p_to, overwrite):
 
     while True:
         header_bytes = p_from.read(14)
-        print(header_bytes)
         if header_bytes[0] is not 0xAA:
             raise Exception("Next message does not start with 0xAA. Data inconsistent.")
 
@@ -46,7 +51,10 @@ def forward(p_from, p_to, overwrite):
         object_type, object_id, property_id, property_data = parse_object(service_data)
 
         try:
+            data_bytes_old = data_bytes
             data_bytes, checksum_bytes = overwrite(service_flag_byte, service_id, object_type, object_id, property_id, property_data)
+            print(data_bytes_old)
+            print(data_bytes)
         except ValueError as e:
             pass
 
@@ -58,7 +66,7 @@ def forward(p_from, p_to, overwrite):
         p_to.write(header_bytes + data_bytes + checksum_bytes)
         p_to.flush()
 
-        if (object_id == 3005 and service_flag_byte == 0x02) or (object_id == 1638 and service_flag_byte == 0): #Antwort wenn Strom gelesen wird oder request wenn strom geschireben wird
+        if (object_id == 3005 and service_flag_byte == 0x02) or (object_id == 1138 and service_flag_byte == 0): #Antwort wenn Strom gelesen wird oder request wenn strom geschireben wird
             object_string = format_object(object_type, object_id, property_id, convert_bytes_to_float(property_data))
             service_string = format_service_frame(service_flag_byte, service_id, object_string)
             message_string = format_message(service_string, datalen, src_address, dest_address, is_consistent)
@@ -70,8 +78,8 @@ def input_loop():
     while True:
         global overwrite_factor
         overwrite_factor = float(input())
-
-
+        
+        
 if __name__ == "__main__":
     with Serial(port=PORT_XCOM, baudrate=BAUDRATE, parity=PARITY, timeout=None) as p_xcom, \
             Serial(port=PORT_MANAGEMENT, baudrate=BAUDRATE, parity=PARITY, timeout=None) as p_management:
