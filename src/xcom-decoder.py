@@ -1,40 +1,23 @@
-from xcom_serial.parse import parse_next_message, parse_service_frame, parse_object
-from xcom_serial.format import SERVICE_FLAGS, SERVICE, OBJECT_TYPE, format_message, format_service_frame, format_object
-import struct
+from SerialMessage import SerialMessage, parse_data_len
 
 log_bytes = open("xcom_log.txt", "rb").read()
 
-
-def write_csv_line(src, dest, service_flags, service_id, object_type, object_id, property_id, property_data):
-    line = "{};{};".format(src, dest)
-    line += "{};".format(SERVICE_FLAGS[service_flags] if service_flags in SERVICE_FLAGS else service_flags)
-    line += "{};".format(SERVICE[service_id] if service_id in SERVICE else service_id)
-    line += "{};".format(OBJECT_TYPE[object_type] if object_type in OBJECT_TYPE else object_type)
-    line += "{};".format(object_id)
-    line += "0x{:04x};".format(property_id)
-    line += "0x{};".format(property_data)
-    line += "\n"
-
+def write_csv_line(line):
     with open("output.csv", "a") as file:
-        file.write(line)
+        file.write(line+"\n")
 
 
 while len(log_bytes) > 0:
-    if log_bytes[0] == 0xAA:
-        src_address, dest_address, datalen, data, is_consistent = parse_next_message(log_bytes)
-        service_flags, service_id, service_data = parse_service_frame(data)
-        object_type, object_id, property_id, property_data = parse_object(service_data)
+    header_bytes = log_bytes[:14]
+    datalen = parse_data_len(header_bytes)
 
-        write_csv_line(src_address, dest_address, service_flags, service_id, object_type, object_id, property_id, property_data)
+    msg_bytes = log_bytes[:14+datalen+2]
 
-        f = object_id.to_bytes(2, "big")
-        print(f)
+    msg = SerialMessage.from_bytes(msg_bytes)
 
-        object_string = format_object(object_type, object_id, property_id, property_data)
-        service_frame_string = format_service_frame(service_flags,service_id, object_string)
-        message_string = format_message(service_frame_string, datalen, src_address, dest_address, is_consistent)
-        print(message_string)
-    else:
-        raise Exception("inconsistent data")
+    write_csv_line(msg.format_csv_line())
+
+    print(msg.to_bytes())
+    print(msg.to_str(0))
 
     log_bytes = log_bytes[datalen+14+2:]

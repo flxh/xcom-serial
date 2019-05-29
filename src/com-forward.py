@@ -1,7 +1,7 @@
 from serial import Serial
 import serial
-from xcom_serial.parse import parse_header, is_data_constistent, parse_service_frame, parse_object, convert_bytes_to_float, convert_float_to_bytes, calculate_checksum
-from xcom_serial.format import format_message, format_object, format_service_frame
+
+from SerialMessage import SerialMessage, parse_data_len, convert_float_to_bytes, convert_bytes_to_float
 from threading import Thread
 
 BAUDRATE = 38400
@@ -12,23 +12,16 @@ PORT_MANAGEMENT = "COM2"#TODO
 overwrite_factor = 1.
 
 
-def overwrite_func(service_flag_byte, service_id, object_type, object_id, property_id, property_data):
-    if service_flag_byte == 0x02 and object_id == 3005:
+def overwrite_func(msg):
+    if msg.service_flags == SerialMessage.SERVICE_FLAGS_IS_RESPONSE and msg.object_id == 3005:
         global overwrite_factor
-        val = convert_bytes_to_float(property_data)
+        val = convert_bytes_to_float(msg.property_data_bytes)
         val *= overwrite_factor
-        print("Overwritten. Factor = {} Value = {}".format(overwrite_factor, val))
-        property_data = convert_float_to_bytes(val)
 
-        data_bytes = service_flag_byte.to_bytes(1, "little")
-        data_bytes += service_id.to_bytes(1, "little")
-        data_bytes += object_type.to_bytes(2, "little")
-        data_bytes += object_id.to_bytes(4, "little")
-        data_bytes += property_id.to_bytes(2, "little")
-        data_bytes += property_data
-        
-        checksum_bytes = calculate_checksum(data_bytes)
-        return data_bytes, checksum_bytes
+        print("Overwritten. Factor = {} Value = {}".format(overwrite_factor, val))
+        msg.property_data_bytes = convert_float_to_bytes(val)
+
+        return msg
 
     else:
         raise ValueError
@@ -39,39 +32,27 @@ def forward(p_from, p_to, overwrite):
 
     while True:
         header_bytes = p_from.read(14)
-        if header_bytes[0] is not 0xAA:
-            raise Exception("Next message does not start with 0xAA. Data inconsistent.")
 
-        datalen, dest_address, src_address = parse_header(header_bytes)
+        datalen = parse_data_len(header_bytes)
 
         data_bytes = p_from.read(datalen)
         checksum_bytes = p_from.read(2)
 
-        service_flag_byte, service_id, service_data = parse_service_frame(data_bytes)
-        object_type, object_id, property_id, property_data = parse_object(service_data)
+        msg = SerialMessage.from_bytes(header_bytes+data_bytes+checksum_bytes)
 
         try:
-            data_bytes_old = data_bytes
-            data_bytes, checksum_bytes = overwrite(service_flag_byte, service_id, object_type, object_id, property_id, property_data)
-            print(data_bytes_old)
-            print(data_bytes)
+            msg = overwrite(msg)
+
+            print("Data org: {}".format(data_bytes))
+            print("Data owr: {}".format(msg.to_bytes()[14:-2]))
         except ValueError as e:
             pass
 
-        is_consistent = is_data_constistent(data_bytes, checksum_bytes)
-
-        if not is_consistent:
-            raise Exception("Checksum incorrect.")
-
-        p_to.write(header_bytes + data_bytes + checksum_bytes)
+        p_to.write(msg.to_bytes())
         p_to.flush()
 
-        if (object_id == 3005 and service_flag_byte == 0x02) or (object_id == 1138 and service_flag_byte == 0): #Antwort wenn Strom gelesen wird oder request wenn strom geschireben wird
-            object_string = format_object(object_type, object_id, property_id, convert_bytes_to_float(property_data))
-            service_string = format_service_frame(service_flag_byte, service_id, object_string)
-            message_string = format_message(service_string, datalen, src_address, dest_address, is_consistent)
-            print("{} -> {} Original message:".format(p_from.port, p_to.port))
-            print(message_string)
+        if (msg.object_id == 3005 and msg.service_flag_byte == 0x02) or (msg.object_id == 1138 and msg.service_flag_byte == 0): #Antwort wenn Strom gelesen wird oder request wenn strom geschireben wird
+            print(msg.to_str(0))
 
 
 def input_loop():
