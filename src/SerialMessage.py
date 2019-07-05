@@ -133,7 +133,7 @@ class SerialMessage:
     }
 
     def total_len(self):
-        return 14 + 10 + len(self.property_data_bytes) + 2 # header + common fields + property data + checksum
+        return 14 + 10 + (len(self.property_data_bytes) if self.property_data_bytes else 0 ) + 2 # header + common fields + property data + checksum
 
     def _format_object(self):
         object_string = "\n\t\t" + "\n\t\t".join([

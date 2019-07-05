@@ -1,5 +1,6 @@
 from serial import Serial
 import serial
+import datetime
 
 from SerialMessage import SerialMessage, parse_data_len
 from threading import Thread
@@ -45,6 +46,8 @@ class Emulator:
     read_messages_response = b'\xaa6\xf5\x01\x00\x00\x01\x00\x00\x00\x1c\x00H \x02\x01\x03\x00\x00\x00\x00\x00\x00\x00\xd0\x03\x00\x00\x03\x00e\x00\x00\x00\xd3\xa8\x89\\\x00\x00\x00\x00\xa0p'
 
     def emulate_response(self, request_msg):
+        """
+        
         if request_msg.service_id == 0x02: # write request
             return SerialMessage(
                 SerialMessage.FRAME_FLAGS_RESPONSE,
@@ -56,9 +59,9 @@ class Emulator:
                 request_msg.object_id,
                 request_msg.property_id,
                 None
-            )
+            )"""
 
-        elif request_msg.service_id == 0x01 and request_msg.object_type in (1, 2): # normal read requests
+        if request_msg.service_id == 0x01 and request_msg.object_type in (1, 2): # normal read requests
 
             if (request_msg.object_id, request_msg.property_id) in Emulator.static_responses:
                 return SerialMessage.from_bytes(
@@ -111,20 +114,23 @@ class Emulator:
             raise ResponseNotConfiguredError()
 
 
-    def forward_message_to_xcom(self, message):
-        self.xcom_port.write(message.to_bytes())
+    def forward_message_to_xcom(self, request_msg):
+        self.xcom_port.write(request_msg.to_bytes())
         self.xcom_port.flush()
 
-        header_bytes = self.management_port.read(14)
+        header_bytes = self.xcom_port.read(14)
         if header_bytes[0] is not 0xAA:
             raise Exception("Response message does not start with 0xAA. Data inconsistent.")
 
         datalen = parse_data_len(header_bytes)
 
-        data_bytes = self.management_port.read(datalen+2)
-        checksum_bytes = self.management_port.read(2)
+        data_bytes = self.xcom_port.read(datalen)
+        checksum_bytes = self.xcom_port.read(2)
 
-        return header_bytes + data_bytes + checksum_bytes
+        message_bytes = header_bytes + data_bytes + checksum_bytes
+        response = SerialMessage.from_bytes(message_bytes)
+        return response
+        
 
     def receive_request_loops(self):
         while True:
@@ -139,22 +145,29 @@ class Emulator:
 
             request_msg = SerialMessage.from_bytes(header_bytes+data_bytes+checksum_bytes)
 
+            print("Request: ")
             print(request_msg.to_str(0))
 
-            if request_msg.service_flags is not 0x02:
+            if request_msg.service_flags is not 0:
                 raise Exception("Message is not a request")
 
             try:
                 response = self.emulate_response(request_msg)
-                print("EMULATED")
+                print("EMULATED Response:")
             except ResponseNotConfiguredError:
-                print("FORWARDED")
+                print("FORWARDED Response:")
                 response = self.forward_message_to_xcom(request_msg)
 
             print(response.to_str(4))
 
             self.management_port.write(response.to_bytes())
             self.management_port.flush()
+            
+            with open("log3.csv","a") as file:
+                ts = datetime.datetime.now().isoformat()
+                file.write("Request;{};{}\n".format(ts,request_msg.format_csv_line()))
+                file.write("Response;{};{}\n".format(ts,response.format_csv_line()))
+
 
 
 def input_loop():
