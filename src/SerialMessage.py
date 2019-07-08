@@ -26,7 +26,7 @@ def convert_bytes_to_int(bytes):
 
 
 def convert_bytes_to_float(b):
-    return struct.unpack("<f", bytes.fromhex(b))[0]
+    return struct.unpack("<f", b)[0]
 
 
 def convert_float_to_bytes(f):
